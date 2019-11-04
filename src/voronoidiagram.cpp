@@ -106,7 +106,6 @@ VoronoiDiagram::~VoronoiDiagram() {
 
 IndexMap VoronoiDiagram::calculate(const QVector<QVector2D>& points) {
   assert(!points.empty());
-
   m_context->makeCurrent(m_surface);
 
   QOpenGLFunctions_3_3_Core* gl =
@@ -162,7 +161,7 @@ IndexMap VoronoiDiagram::calculate(const QVector<QVector2D>& points) {
   m_vao->release();
 
   QImage voronoiDiagram = m_fbo->toImage();
-  //  voronoiDiagram.save("voronoiDiagram.png");
+  //voronoiDiagram.save("voronoiDiagram.png");
 
   m_fbo->release();
   m_context->doneCurrent();
@@ -178,6 +177,7 @@ IndexMap VoronoiDiagram::calculate(const QVector<QVector2D>& points) {
       int b = qBlue(voroPixel);
 
       uint32_t index = CellEncoder::decode(r, g, b);
+      //printf("\n--> index %d\n",index);
       assert(index <= points.size());
 
       idxMap.set(x, y, index);

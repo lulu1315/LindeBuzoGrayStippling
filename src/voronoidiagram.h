@@ -27,7 +27,7 @@ class VoronoiDiagram {
  public:
   VoronoiDiagram(QImage& density);
   ~VoronoiDiagram();
-
+  
   IndexMap calculate(const QVector<QVector2D>& points);
 
  private:

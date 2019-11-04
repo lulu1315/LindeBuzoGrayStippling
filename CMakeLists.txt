@@ -33,6 +33,7 @@ set(SOURCES
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 find_package(Qt5 5.10 COMPONENTS Core Widgets Svg PrintSupport REQUIRED)
+find_package(OpenCV REQUIRED)
 
 add_executable(${PROJECT_NAME} ${HEADERS} ${SOURCES} resources.qrc)
 
@@ -41,4 +42,5 @@ target_link_libraries(${PROJECT_NAME}
 	Qt5::Widgets
 	Qt5::Svg
 	Qt5::PrintSupport
+	${OpenCV_LIBS}
 )

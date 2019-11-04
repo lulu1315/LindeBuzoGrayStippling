@@ -97,6 +97,9 @@ void StippleViewer::setInputImage(const QImage &img) {
 
 void StippleViewer::stipple(const LBGStippling::Params params) {
   // TODO: Handle return value
-  m_stippling.stipple(m_image, params);
+  std::vector<Stipple> initialstipples;
+  float finalhysteresis;
+  int hysteresis_strategy;
+  m_stippling.stipple(m_image, params,1,initialstipples,finalhysteresis,hysteresis_strategy);
   emit finished();
 }

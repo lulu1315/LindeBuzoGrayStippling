@@ -44,7 +44,11 @@ class LBGStippling {
   LBGStippling();
 
   std::vector<Stipple> stipple(const QImage& density,
-                               const Params& params) const;
+                               const Params& params,
+                               const int& mode,
+                               const std::vector<Stipple>& initialstipples,
+                               float& finalhysteresis,
+                               const int& hysteresis_strategy) const;
 
   // TODO: Rename and method chaining.
   void setStatusCallback(Report<Status> statusCB);

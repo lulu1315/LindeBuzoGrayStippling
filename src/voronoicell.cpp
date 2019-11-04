@@ -16,6 +16,15 @@ std::vector<VoronoiCell> accumulateCells(const IndexMap& map,
                                          const QImage& density) {
   // compute voronoi cell moments
   std::vector<VoronoiCell> cells = std::vector<VoronoiCell>(map.count());
+  
+  /*
+  for (size_t i = 0; i < cells.size(); ++i) {
+    VoronoiCell& cell = cells[i];
+    cell.area = 0;
+    cell.sumDensity = 0;
+    }
+    */
+    
   std::vector<Moments> moments = std::vector<Moments>(map.count());
 
   for (int x = 0; x < map.width; ++x) {
@@ -25,7 +34,8 @@ std::vector<VoronoiCell> accumulateCells(const IndexMap& map,
       QRgb densityPixel = density.pixel(x, y);
       float density = std::max(1.0f - qGray(densityPixel) / 255.0f,
                                std::numeric_limits<float>::epsilon());
-
+      //float density = (1.0f - (qGray(densityPixel) / 255.0f));
+      //printf("density/densityPixel : %f %d\n",density,qGray(densityPixel));
       VoronoiCell& cell = cells[index];
       cell.area++;
       cell.sumDensity += density;
