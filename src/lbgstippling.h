@@ -1,15 +1,28 @@
 #ifndef LBGSTIPPLING_H
 #define LBGSTIPPLING_H
 
+#include "opencv2/highgui.hpp"
+#include "opencv2/video.hpp"
+#include "opencv2/core/ocl.hpp"
+#include "opencv2/optflow.hpp"
+
 #include "voronoidiagram.h"
 
 #include <QImage>
 #include <QVector2D>
 
+using namespace cv;
+using namespace optflow;
+
 // TODO: Color is only used for debugging
 struct Stipple {
   QVector2D pos;
+  QVector2D previousflow;
+  QVector2D nextflow;
+  float luminance;
   float size;
+  int label;
+  int birth;
   QColor color;
 };
 
@@ -44,11 +57,15 @@ class LBGStippling {
   LBGStippling();
 
   std::vector<Stipple> stipple(const QImage& density,
+                               const Mat_<Point2f>& previousflow,
+                               const Mat_<Point2f>& nextflow,
                                const Params& params,
                                const int& mode,
+                               const int& flowmode,
                                const std::vector<Stipple>& initialstipples,
                                float& finalhysteresis,
-                               const int& hysteresis_strategy) const;
+                               const int& hysteresis_strategy,
+                               const int& curframe) const;
 
   // TODO: Rename and method chaining.
   void setStatusCallback(Report<Status> statusCB);

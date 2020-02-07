@@ -130,7 +130,7 @@ int main(int argc, char* argv[]) {
                 inply >> plyword;
                 }
             //fill initialstipples with ply values
-            float init_stipple_xpos,init_stipple_ypos,init_stipple_zpos,init_stipple_xpreviousflow,init_stipple_zpreviousflow,init_stipple_xnextflow,init_stipple_znextflow,init_stipple_size,init_stipple_luminance;
+            float init_stipple_xpos,init_stipple_ypos,init_stipple_zpos,init_stipple_xpreviousflow,init_stipple_zpreviousflow,init_stipple_xnextflow,init_stipple_znextflow,init_stipple_size;
             int init_stipple_label,init_stipple_birth;
             for (int i=1;i<=nvertices;i++)
                 {
@@ -141,11 +141,10 @@ int main(int argc, char* argv[]) {
                 inply >> init_stipple_zpreviousflow;
                 inply >> init_stipple_xnextflow;
                 inply >> init_stipple_znextflow;
-                inply >> init_stipple_luminance;
                 inply >> init_stipple_size;
                 inply >> init_stipple_label;
                 inply >> init_stipple_birth;
-                initialstipples.push_back({QVector2D(init_stipple_xpos,init_stipple_zpos),QVector2D(init_stipple_xpreviousflow,init_stipple_zpreviousflow),QVector2D(init_stipple_xnextflow,init_stipple_znextflow), init_stipple_luminance, init_stipple_size, init_stipple_label, init_stipple_birth, Qt::black});
+                initialstipples.push_back({QVector2D(init_stipple_xpos,init_stipple_zpos),QVector2D(init_stipple_xpreviousflow,init_stipple_zpreviousflow),QVector2D(init_stipple_xnextflow,init_stipple_znextflow), init_stipple_size, init_stipple_label, init_stipple_birth, Qt::black});
                 }
             inply.close();
             printf("--- initial stipples size : %zu\n",initialstipples.size());
@@ -163,7 +162,7 @@ int main(int argc, char* argv[]) {
             // read current and previous and next frames in opencv format
             Mat cur, prev , next;
             prev= imread(previousframe, 1);
-            cur = imread(currentframe, 1);
+            cur = imread(curframe, 1);
             next = imread(nextframe, 1);
             //convert to grayscale
             if ( cur.depth() != CV_8U ) cur.convertTo(cur, CV_8U);
@@ -226,7 +225,6 @@ int main(int argc, char* argv[]) {
         outply << "property float zprevflow\n";
         outply << "property float xnextflow\n";
         outply << "property float znextflow\n";
-        outply << "property float luminance\n";
         outply << "property float size\n";
         outply << "property int label\n";
         outply << "property int birth\n";
@@ -245,7 +243,7 @@ int main(int argc, char* argv[]) {
             painter.setBrush(brush);
             painter.setRenderHint(QPainter::Antialiasing, true);
             painter.drawEllipse(QPointF(stipple.pos[0]*density.width(),stipple.pos[1]*density.height()), stipple.size/stipplesizefactor, stipple.size/stipplesizefactor);
-            outply << stipple.pos[0] << " 0 " << stipple.pos[1] << " " << stipple.previousflow[0] << " " << stipple.previousflow[1] << " " << stipple.nextflow[0] << " " << stipple.nextflow[1] << " " << stipple.luminance << " " << stipple.size << " " << stipple.label << " " << stipple.birth << "\n";
+            outply << stipple.pos[0] << " 0 " << stipple.pos[1] << " " << stipple.previousflow[0] << " " << stipple.previousflow[1] << " " << stipple.nextflow[0] << " " << stipple.nextflow[1] << " " << stipple.size << " " << stipple.label << " " << stipple.birth << "\n";
             }
         painter.end();
         outply.close();

@@ -33,8 +33,7 @@ int main(int argc, char* argv[]) {
     std::ofstream outply;
     std::ifstream inply;
     float finalhysteresis;
-    Mat_<Point2f> previousflow;
-    Mat_<Point2f> nextflow;
+    Mat_<Point2f> flow;
     
     LBGStippling::Params params;
     //stipples structure
@@ -56,10 +55,9 @@ int main(int argc, char* argv[]) {
     int flowmode=               atoi(argv[13]);
     int hysteresis_strategy=    atoi(argv[14]);
     int curframe =              atoi(argv[15]);
-    char *initialply =          argv[16];
-    char *previousframe =       argv[17]; //.flo file or previous frame
-    char *currentframe =        argv[18]; // current frame
-    char *nextframe =           argv[19]; // current frame
+    char *initialply =               argv[16];
+    char *flowfile1 =                argv[17]; //.flo file or previous frame
+    char *flowfile2 =                argv[18]; // current frame
     
     
     QApplication app(argc, argv); //collect args before otherwise atof doesn't work???
@@ -98,9 +96,15 @@ int main(int argc, char* argv[]) {
             printf ("- no optical flow\n");
             //performs stippling
             LBGStippling m_stippling;
-            mystipples = m_stippling.stipple(density,previousflow,nextflow,params,0,flowmode,initialstipples,finalhysteresis,hysteresis_strategy,curframe);
+            mystipples = m_stippling.stipple(density,flow,params,0,flowmode,initialstipples,finalhysteresis,hysteresis_strategy,curframe);
             }
-        if (flowmode == 1) 
+        if (flowmode >= 1) 
+        //1: backward flow 2: forward flow 
+        // assumes flowfile1 is a precomputed optical flow file in .flo format
+        // backward_current_prev.flo or forward_prev_current.flo
+        //3: backward flow 4: forward flow 
+        // assumes flowfile1 is the previous pixel image
+        // assumes flowfile2 is the current pixel image
         // calculate optical flow with deepflow
             {
             //read initial ply
@@ -130,27 +134,25 @@ int main(int argc, char* argv[]) {
                 inply >> plyword;
                 }
             //fill initialstipples with ply values
-            float init_stipple_xpos,init_stipple_ypos,init_stipple_zpos,init_stipple_xpreviousflow,init_stipple_zpreviousflow,init_stipple_xnextflow,init_stipple_znextflow,init_stipple_size,init_stipple_luminance;
+            float init_stipple_xpos,init_stipple_ypos,init_stipple_zpos,init_stipple_xflow,init_stipple_zflow,init_stipple_size;
             int init_stipple_label,init_stipple_birth;
             for (int i=1;i<=nvertices;i++)
                 {
                 inply >> init_stipple_xpos;
                 inply >> init_stipple_ypos;
                 inply >> init_stipple_zpos;
-                inply >> init_stipple_xpreviousflow;
-                inply >> init_stipple_zpreviousflow;
-                inply >> init_stipple_xnextflow;
-                inply >> init_stipple_znextflow;
-                inply >> init_stipple_luminance;
+                inply >> init_stipple_xflow;
+                inply >> init_stipple_zflow;
                 inply >> init_stipple_size;
                 inply >> init_stipple_label;
                 inply >> init_stipple_birth;
-                initialstipples.push_back({QVector2D(init_stipple_xpos,init_stipple_zpos),QVector2D(init_stipple_xpreviousflow,init_stipple_zpreviousflow),QVector2D(init_stipple_xnextflow,init_stipple_znextflow), init_stipple_luminance, init_stipple_size, init_stipple_label, init_stipple_birth, Qt::black});
+                //printf("%f %f %f %f\n",init_stipple_xpos,init_stipple_ypos,init_stipple_zpos,init_stipple_size);
+                initialstipples.push_back({QVector2D(init_stipple_xpos,init_stipple_zpos),QVector2D(init_stipple_xflow,init_stipple_zflow), init_stipple_size, init_stipple_label, init_stipple_birth, Qt::black});
                 }
             inply.close();
             printf("--- initial stipples size : %zu\n",initialstipples.size());
             
-            /*read precomputed flow file
+            //read precomputed flow file
             if (flowmode == 1 || flowmode == 2)
                 {
                 if (flowmode == 1) printf ("\n- using backward precomputed optical flow : %s\n",flowfile1);
@@ -158,49 +160,59 @@ int main(int argc, char* argv[]) {
                 flow = optflow::readOpticalFlow(flowfile1);
                 printf("--- flow size : %d %d\n",flow.size[1], flow.size[0]);
                 }
-                */
             //compute optical flow on the fly
-            // read current and previous and next frames in opencv format
-            Mat cur, prev , next;
-            prev= imread(previousframe, 1);
-            cur = imread(currentframe, 1);
-            next = imread(nextframe, 1);
-            //convert to grayscale
-            if ( cur.depth() != CV_8U ) cur.convertTo(cur, CV_8U);
-            if ( prev.depth() != CV_8U ) prev.convertTo(prev, CV_8U);
-            if ( next.depth() != CV_8U ) next.convertTo(prev, CV_8U);
-            cvtColor(cur, cur, COLOR_BGR2GRAY);
-            cvtColor(prev, prev, COLOR_BGR2GRAY);
-            cvtColor(next, next, COLOR_BGR2GRAY);
-            //compute opencv deep optical flow
-            previousflow = Mat(cur.size[0], cur.size[1], CV_32FC2);
-            nextflow     = Mat(cur.size[0], cur.size[1], CV_32FC2);
-            Ptr<DenseOpticalFlow> algorithm;
-            algorithm = createOptFlow_DeepFlow();
-            //use openCL
-            int useGpu = 1;
-            cv::ocl::setUseOpenCL(useGpu);
-            //go into the flow
-            printf ("\n- computing backward optical flow\n");
-            printf ("--- OpenCL Enabled: %u\n", useGpu && cv::ocl::haveOpenCL());
-            if (useGpu) algorithm->calc(cur, prev, previousflow.getUMat(ACCESS_RW));
-            else algorithm->calc(cur, prev, previousflow);
-            printf ("\n- computing forward optical flow\n");
-            printf ("--- OpenCL Enabled: %u\n", useGpu && cv::ocl::haveOpenCL());
-            if (useGpu) algorithm->calc(cur, next, nextflow.getUMat(ACCESS_RW));
-            else algorithm->calc(cur, next, nextflow);
+            if (flowmode == 3 || flowmode == 4)
+                {
+                // read current and previous frames in opencv format
+                //should be better to convert density to cv::Mat ...
+                Mat cur, prev;
+                prev= imread(flowfile1, 1);
+                cur = imread(flowfile2, 1);
+                //convert to grayscale
+                if ( cur.depth() != CV_8U ) cur.convertTo(cur, CV_8U);
+                if ( prev.depth() != CV_8U ) prev.convertTo(prev, CV_8U);
+                cvtColor(cur, cur, COLOR_BGR2GRAY);
+                cvtColor(prev, prev, COLOR_BGR2GRAY);
+                //compute opencv deep optical flow
+                flow = Mat(cur.size[0], cur.size[1], CV_32FC2);
+                Ptr<DenseOpticalFlow> algorithm;
+                algorithm = createOptFlow_DeepFlow();
+                //use openCL
+                int useGpu = 1;
+                cv::ocl::setUseOpenCL(useGpu);
+                //go into the flow
+                if (flowmode == 3) //backward
+                    {
+                    printf ("\n- computing backward optical flow\n");
+                    printf ("--- OpenCL Enabled: %u\n", useGpu && cv::ocl::haveOpenCL());
+                    if (useGpu) algorithm->calc(cur, prev, flow.getUMat(ACCESS_RW));
+                    else algorithm->calc(cur, prev, flow);
+                    }
+                if (flowmode == 4) //forward
+                    {
+                    printf ("\n- computing forward optical flow\n");
+                    printf ("--- OpenCL Enabled: %u\n", useGpu && cv::ocl::haveOpenCL());
+                    if (useGpu) algorithm->calc(prev, cur, flow.getUMat(ACCESS_RW));
+                    else algorithm->calc(prev, cur, flow);
+                    }
+                }
             //warp initialstipples with OpticalFlow
             for (auto &stipple : initialstipples) {
                 float pixelflowx,pixelflowy;
                 pixelflowx=stipple.pos[0]*density.width();
                 pixelflowy=stipple.pos[1]*density.height();
-                Vec2f of = previousflow.at<Vec2f>(pixelflowy,pixelflowx);
+                Vec2f of = flow.at<Vec2f>(pixelflowy,pixelflowx);
+                //printf("flow (x,y) : (%f,%f) %f %f\n",pixelflowx,pixelflowy,of.val[0],of.val[1]);
+                if (flowmode == 1 || flowmode == 3) {
                 stipple.pos[0] = stipple.pos[0] - (of.val[0]/(float)density.width());
-                stipple.pos[1] = stipple.pos[1] - (of.val[1]/(float)density.height());
+                stipple.pos[1] = stipple.pos[1] - (of.val[1]/(float)density.height());}
+                if (flowmode == 2 || flowmode == 4) {
+                stipple.pos[0] = stipple.pos[0] + (of.val[0]/(float)density.width());
+                stipple.pos[1] = stipple.pos[1] + (of.val[1]/(float)density.height());}
                 }
             //performs stippling
             LBGStippling m_stippling;
-            mystipples = m_stippling.stipple(density,previousflow,nextflow,params,2,flowmode,initialstipples,finalhysteresis,hysteresis_strategy,curframe);
+            mystipples = m_stippling.stipple(density,flow,params,2,flowmode,initialstipples,finalhysteresis,hysteresis_strategy,curframe);
             }
         //prepare drawings
         QImage background=density.copy();
@@ -222,11 +234,8 @@ int main(int argc, char* argv[]) {
         outply << "property float x\n";
         outply << "property float y\n";
         outply << "property float z\n";
-        outply << "property float xprevflow\n";
-        outply << "property float zprevflow\n";
-        outply << "property float xnextflow\n";
-        outply << "property float znextflow\n";
-        outply << "property float luminance\n";
+        outply << "property float xflow\n";
+        outply << "property float zflow\n";
         outply << "property float size\n";
         outply << "property int label\n";
         outply << "property int birth\n";
@@ -245,7 +254,7 @@ int main(int argc, char* argv[]) {
             painter.setBrush(brush);
             painter.setRenderHint(QPainter::Antialiasing, true);
             painter.drawEllipse(QPointF(stipple.pos[0]*density.width(),stipple.pos[1]*density.height()), stipple.size/stipplesizefactor, stipple.size/stipplesizefactor);
-            outply << stipple.pos[0] << " 0 " << stipple.pos[1] << " " << stipple.previousflow[0] << " " << stipple.previousflow[1] << " " << stipple.nextflow[0] << " " << stipple.nextflow[1] << " " << stipple.luminance << " " << stipple.size << " " << stipple.label << " " << stipple.birth << "\n";
+            outply << stipple.pos[0] << " 0 " << stipple.pos[1] << " " << stipple.flow[0] << " " << stipple.flow[1] << " " << stipple.size << " " << stipple.label << " " << stipple.birth << "\n";
             }
         painter.end();
         outply.close();

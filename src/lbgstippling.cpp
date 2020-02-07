@@ -34,7 +34,7 @@ std::vector<Stipple> randomStipples(size_t n, float size) {
   std::uniform_real_distribution<float> dis(0.01f, 0.99f);
   std::vector<Stipple> stipples(n);
   std::generate(stipples.begin(), stipples.end(), [&]() {
-    return Stipple{QVector2D(dis(Random::gen), dis(Random::gen)), size,
+    return Stipple{QVector2D(dis(Random::gen),dis(Random::gen)), QVector2D(0,0), QVector2D(0,0) , size,
                    Qt::black};
   });
   return stipples;
@@ -100,11 +100,15 @@ void LBGStippling::setStippleCallback(Report<std::vector<Stipple>> stippleCB) {
 }
 
 std::vector<Stipple> LBGStippling::stipple(const QImage &density,
+                                           const Mat_<Point2f> &previousflow,
+                                           const Mat_<Point2f> &nextflow,
                                            const Params &params,
                                            const int &mode,
+                                           const int &flowmode,
                                            const std::vector<Stipple> &initialstipples,
                                            float &finalhysteresis,
-                                           const int &hysteresis_strategy) const {
+                                           const int &hysteresis_strategy,
+                                           const int &curframe) const {
   QImage densityGray =
       density
           .scaledToWidth(params.superSamplingFactor * density.width(),
@@ -134,6 +138,14 @@ std::vector<Stipple> LBGStippling::stipple(const QImage &density,
     auto indexMap = voronoi.calculate(sites(stipples));
     std::vector<VoronoiCell> cells = accumulateCells(indexMap, densityGray);
 
+    //transfer labels and birth to cells
+    int maxlabel=0;
+    for (int k = 0; k < cells.size(); ++k) {
+        cells[k].label=stipples[k].label;
+        cells[k].birth=stipples[k].birth;
+        if (stipples[k].label > maxlabel) {maxlabel=stipples[k].label;}
+        }
+        
     /*
     //looking at cells ...
     QImage densityCheck(indexMap.width,indexMap.height,QImage::Format_RGB32);
@@ -154,25 +166,30 @@ std::vector<Stipple> LBGStippling::stipple(const QImage &density,
     //end looking at cells
     */
     
+    //checking if cells are ordered like stipples...
+    //for (int k = 0; k < stipples.size(); ++k) {
+    //    printf("k : %d cell centroid : %f %f stipple pos : %f %f\n",k,cells[k].centroid.x(),cells[k].centroid.y(),stipples[k].pos.x(),stipples[k].pos.y());
+     //   }
+      
     assert(cells.size() == stipples.size());
 
     stipples.clear();
     float hysteresis;
     
-    if (mode == 0 || mode == 1 || mode == 3)
+    if (mode == 0)
     {
     hysteresis = currentHysteresis(status.iteration, params);
     }
-    if (mode == 2)
+    if (mode == 1 || mode == 2 || mode == 3 || mode == 4)
     {
-    //printf("--- hysteresis_strategy %d\n",hysteresis_strategy);
         if (hysteresis_strategy == 0)
             {
             hysteresis = currentHysteresis(status.iteration, params);
             }
         if (hysteresis_strategy == 1)
             {
-            hysteresis = finalhysteresis;
+            //hysteresis = finalhysteresis;
+            hysteresis = updateHysteresis(status.iteration,finalhysteresis,params.hysteresisDelta);
             }
         if (hysteresis_strategy >= 2)
             {
@@ -193,13 +210,14 @@ std::vector<Stipple> LBGStippling::stipple(const QImage &density,
           cell.area == 0.0f) {
         // cell too small - merge
         ++status.merges;
+        //printf("-%d",cell.label);
         continue;
       }
 
       if (totalDensity < getSplitValueUpper(diameter, hysteresis,
                                             params.superSamplingFactor)) {
         // cell size within acceptable range - keep
-        stipples.push_back({cell.centroid, diameter, Qt::black});
+        stipples.push_back({cell.centroid, QVector2D(0,0), QVector2D(0,0) ,0, diameter, cell.label, cell.birth, Qt::black});
         continue;
       }
 
@@ -229,11 +247,15 @@ std::vector<Stipple> LBGStippling::stipple(const QImage &density,
 
       //stipples.push_back({jitter(splitSeed1), diameter, Qt::red});
       //stipples.push_back({jitter(splitSeed2), diameter, Qt::red});
-      stipples.push_back({splitSeed1, diameter, Qt::red});
-      stipples.push_back({splitSeed2, diameter, Qt::red});
+      //maxlabel ++;
+      stipples.push_back({splitSeed1, QVector2D(0,0), QVector2D(0,0) ,0, diameter, cell.label , cell.birth , Qt::red});
+      maxlabel ++;
+      stipples.push_back({splitSeed2, QVector2D(0,0), QVector2D(0,0) ,0, diameter, maxlabel , curframe , Qt::red});
+      //printf("+%d",maxlabel);
 
       ++status.splits;
     }
+    
     status.size = stipples.size();
     m_stippleCallback(stipples);
     m_statusCallback(status);
@@ -242,11 +264,63 @@ std::vector<Stipple> LBGStippling::stipple(const QImage &density,
     printf(".");
     fflush(stdout);
   }
+  
   printf("\n--- done %zu iterations\n",status.iteration);
   printf("--- status.size %zu\n",status.size);
   printf("--- status.splits %zu\n",status.splits);
   printf("--- status.merges %zu\n",status.merges);
   printf("--- status.hysteresis %f\n",status.hysteresis);
   finalhysteresis = status.hysteresis;
+    
+  //motion vectors evaluation
+  if (flowmode == 1) 
+    {
+    printf("--- evaluating motion vectors\n");
+    //recreate indexmap with finalstipples
+    auto indexMap = voronoi.calculate(sites(stipples));
+    std::vector<Vec2f> averagepreviousof = std::vector<Vec2f>(indexMap.count());
+    std::vector<Vec2f> averagenextof = std::vector<Vec2f>(indexMap.count());
+    std::vector<float> luminances = std::vector<float>(indexMap.count());
+    std::vector<int>   cellcount = std::vector<int>(indexMap.count());
+    for (int x = 0; x < indexMap.width; ++x) {
+        for (int y = 0; y < indexMap.height; ++y) {
+            uint32_t index = indexMap.get(x, y);
+            QRgb densityPixel = density.pixel(x, y);
+            float luminance = qGray(densityPixel);
+            Vec2f prevof = previousflow.at<Vec2f>(y,x);
+            Vec2f nextof = nextflow.at<Vec2f>(y,x);
+            Vec2f& accumulateprevof = averagepreviousof[index];
+            Vec2f& accumulatenextof = averagenextof[index];
+            float& accumulateluminance = luminances[index];
+            int& divider            = cellcount[index];
+            divider++;
+            accumulateprevof=accumulateprevof+prevof;
+            accumulatenextof=accumulatenextof+nextof;
+            accumulateluminance=accumulateluminance+luminance;
+            }
+        }
+    for (int k = 0; k < stipples.size(); ++k) {
+        //printf("cell : %d cellcount : %d of : %f/%f\n",k,cellcount[k],averageof[k][0]/cellcount[k],averageof[k][1]/cellcount[k]);
+        stipples[k].previousflow=QVector2D(averagepreviousof[k][0]/cellcount[k],averagepreviousof[k][1]/cellcount[k]);
+        stipples[k].nextflow=QVector2D(averagenextof[k][0]/cellcount[k],averagenextof[k][1]/cellcount[k]);
+        stipples[k].luminance=luminances[k]/cellcount[k];
+        }
+    }
+    
+  if (mode == 0 || mode == 1)
+    {
+    //create labels
+    for (int k = 0; k < stipples.size(); ++k) {
+        stipples[k].label=k;
+        stipples[k].birth=curframe;
+        }
+    }
+    
+    int maxlabel=0;
+    for (int k = 0; k < stipples.size(); ++k) {
+        if (stipples[k].label > maxlabel) {maxlabel=stipples[k].label;}
+        }
+    printf("--- maxlabel %d\n",maxlabel);
+    
   return stipples;
 }

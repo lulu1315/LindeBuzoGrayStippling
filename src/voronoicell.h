@@ -10,6 +10,8 @@ struct VoronoiCell {
   float orientation;
   float area;
   float sumDensity;
+  int label;
+  int birth;
 };
 
 std::vector<VoronoiCell> accumulateCells(const IndexMap& map,
